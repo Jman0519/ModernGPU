@@ -1,9 +1,30 @@
+/**
+* TypedArray
+* @typedef {Int8Array|Int16Array|Int32Array|BigInt64Array|Uint8Array|Uint16Array|Uint32Array|BigUint64Array|Float32Array|Float64Array} TypedArray
+*/
+
 export class ModernGpu {
+    /**
+     * Empty constructor because getting a GPU is async. Make sure to call ModernGPU.init() instead.
+     */
     constructor() { }
 
+    /**
+     * The GPU adapter
+     * @type {GPUAdapter}
+     */
     adapter = undefined;
+
+    /**
+     * The GPU device
+     * @type {GPUDevice}
+     */
     device = undefined;
 
+    /**
+     * Asks the machine for a high preformance GPU
+     * @returns {ModernGpu}
+     */
     static async init() {
         const gpu = new ModernGpu();
 
@@ -23,11 +44,14 @@ export class ModernGpu {
         return gpu;
     }
 
+    /**
+     * Creates a StorageBuffer, and copys the given buffer to the gpu.
+     * @param {TypedArray} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     * @returns {StorageBuffer}
+     */
     createStorageBuffer(buffer, binding, group = 0) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const storageBuffer = this.device.createBuffer({
             size: buffer.byteLength,
             usage: GPUBufferUsage.STORAGE,
@@ -39,11 +63,14 @@ export class ModernGpu {
         return new StorageBuffer(storageBuffer, binding, group);
     }
 
+    /**
+     * Creates a UniformBuffer, and copys the given buffer to the gpu. Can be written to later with UniformBuffer.write()
+     * @param {TypedArray} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     * @returns {UniformBuffer}
+     */
     createUniformBuffer(buffer, binding, group = 0) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const uniformBuffer = this.device.createBuffer({
             size: buffer.byteLength,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
@@ -55,11 +82,14 @@ export class ModernGpu {
         return new UniformBuffer(uniformBuffer, buffer, this.device, binding, group);
     }
 
+    /**
+     * Creates an OutputBuffer, and copys the given buffer to the gpu. Can be read from later with OutputBuffer.read()
+     * @param {TypedArray} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     * @returns {OutputBuffer}
+     */
     createOutputBuffer(buffer, binding, group = 0) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const gpuOnlyBuffer = this.device.createBuffer({
             size: buffer.byteLength,
             usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
@@ -73,11 +103,16 @@ export class ModernGpu {
         return new OutputBuffer(gpuOnlyBuffer, cpuAndGpuBuffer, buffer, binding, group);
     }
 
+    /**
+     * 
+     * @param {Number} binding 
+     * @param {Number} width 
+     * @param {Number} height 
+     * @param {Number} depth 
+     * @param {Number} group 
+     * @returns {Texture}
+     */
     createTexture(binding, width, height, depth = 1, group = 0) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const texture = this.device.createTexture({
             size: [width, height, depth],
             format: "rgba8unorm",
@@ -87,20 +122,28 @@ export class ModernGpu {
         return new Texture(texture, binding, group);
     }
 
+    /**
+     * 
+     * @param {Number} binding 
+     * @param {Number} group 
+     * @returns {Sampler}
+     */
     createSampler(binding, group = 0) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const sampler = this.device.createSampler();
         return new Sampler(sampler, binding, group);
     }
 
+    /**
+     * Creates a ComputeKernel with the given GPU buffers and shader code. Can be run with ComputeKernel.run()
+     * @param {String} srcCode 
+     * @param {StorageBuffer[]} storageBuffers 
+     * @param {UniformBuffer[]} uniformBuffers 
+     * @param {OutputBuffer[]} outputBuffers 
+     * @param {Number[]} numWorkgroups 
+     * @param {String} entryPoint 
+     * @returns {ComputeKernel}
+     */
     compileComputeShader(srcCode, storageBuffers, uniformBuffers, outputBuffers, numWorkgroups, entryPoint = "main") {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         // compile the shader code into spir-v or something
         const computeShader = this.device.createShaderModule({
             code: srcCode
@@ -210,11 +253,14 @@ export class ModernGpu {
         return new ComputeKernel(this.device, computePipeline, bindGroup, numWorkgroups, outputBuffers);
     }
 
+    /**
+     * Crates a RenderKernel and displays the given StorageBuffer to the given canvas.
+     * @param {GPUCanvasContext} context 
+     * @param {StorageBuffer} buffer 
+     * @param {Number[]} canvasSize 
+     * @returns {RenderKernel}
+     */
     compileRenderShader(context, buffer, canvasSize) {
-        if (this.device == undefined) {
-            throw new Error("device is undefined");
-        }
-
         const format = navigator.gpu.getPreferredCanvasFormat();
 
         context.configure({
@@ -321,6 +367,9 @@ export class ModernGpu {
         return new RenderKernel(this.device, pipeline, bindGroup, context);
     }
 
+    /**
+     * Example function to show how to use the gpu without library for reference of what this library does automatically.
+     */
     async Double() {
         let x = [];
         for (let i = 0; i < 1e6; i++) {
@@ -489,6 +538,12 @@ export class ModernGpu {
 }
 
 class StorageBuffer {
+    /**
+     * Creates a StorageBuffer, and copys the given buffer to the gpu.
+     * @param {GPUBuffer} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
     constructor(buffer, binding, group) {
         this.buffer = buffer;
         this.binding = binding;
@@ -500,6 +555,14 @@ class StorageBuffer {
 }
 
 class UniformBuffer {
+    /**
+     * Creates a UniformBuffer, and copys the given buffer to the gpu. Can be written to later with UniformBuffer.write()
+     * @param {GPUBuffer} buffer 
+     * @param {TypedArray} typedArrayBuffer 
+     * @param {GPUDevice} device 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
     constructor(buffer, typedArrayBuffer, device, binding, group) {
         this.buffer = buffer;
         this.device = device;
@@ -521,6 +584,14 @@ class UniformBuffer {
 }
 
 class OutputBuffer {
+    /**
+     * Creates an OutputBuffer, and copys the given buffer to the gpu. Can be read from later with OutputBuffer.read()
+     * @param {GPUBuffer} gpuBuffer 
+     * @param {GPUBuffer} cpuAndGpuBuffer 
+     * @param {TypedArray} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
     constructor(gpuBuffer, cpuAndGpuBuffer, buffer, binding, group) {
         this.buffer = gpuBuffer;
         this.cpuAndGpuBuffer = cpuAndGpuBuffer;
@@ -540,6 +611,11 @@ class OutputBuffer {
     reading = false;
     deferer = new Deferer();
     lastData;
+
+    /**
+     * Reads the data from the GPU to the CPU.
+     * @returns {Promise<TypedArray>}
+     */
     async read() {
         if (this.reading) {
             return this.lastData;
@@ -557,6 +633,12 @@ class OutputBuffer {
 }
 
 class Texture {
+    /**
+     * Creates a Texture.
+     * @param {GPUTexture} texture 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
     constructor(texture, binding, group) {
         this.texture = texture;
         this.binding = binding;
@@ -568,6 +650,12 @@ class Texture {
 }
 
 class Sampler {
+    /**
+     * Creates a Sampler.
+     * @param {GPUSampler} sampler 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
     constructor(sampler, binding, group) {
         this.sampler = sampler;
         this.binding = binding;
@@ -579,6 +667,14 @@ class Sampler {
 }
 
 class ComputeKernel {
+    /**
+     * Creates a ComputeKernel with the given GPU buffers and shader code. Can be run with ComputeKernel.run()
+     * @param {GPUDevice} device 
+     * @param {GPUComputePipeline} computePipeline 
+     * @param {GPUBindGroup} bindGroup 
+     * @param {Number[]} numWorkgroups 
+     * @param {OutputBuffer[]} outputBuffers 
+     */
     constructor(device, computePipeline, bindGroup, numWorkgroups, outputBuffers) {
         this.device = device;
         this.computePipeline = computePipeline;
@@ -591,6 +687,11 @@ class ComputeKernel {
     bindGroup;
     numWorkgroups;
     outputBuffers;
+
+    /**
+     * Runs the ComputeKernel. Optional flag to copy any OutputBuffers from the GPU to the CPU (set to false for speed).
+     * @param {Boolean} copyToOutput 
+     */
     async run(copyToOutput = true) {
         for (const outputBuffer of this.outputBuffers) {
             if (outputBuffer.reading) {
@@ -614,6 +715,13 @@ class ComputeKernel {
 }
 
 class RenderKernel {
+    /**
+     * Creates a RenderKernel and displays the given StorageBuffer to the given canvas.
+     * @param {GPUDevice} device 
+     * @param {GPURenderPipeline} pipeline 
+     * @param {GPUBindGroup} bindGroup 
+     * @param {GPUCanvasContext} context 
+     */
     constructor(device, pipeline, bindGroup, context) {
         this.device = device;
         this.pipeline = pipeline;
@@ -624,6 +732,10 @@ class RenderKernel {
     pipeline;
     bindGroup;
     context;
+
+    /**
+     * Displays the StorageBuffer to the canvas.
+     */
     run() {
         const commandEncoder = this.device.createCommandEncoder();
         const passEncoder = commandEncoder.beginRenderPass({
@@ -647,6 +759,9 @@ class RenderKernel {
 
 class Deferer {
     promise;
+    /**
+     * Basically a mutex.
+     */
     resolve = () => { };
     constructor() {
         this.promise = new Promise((resolve) => {

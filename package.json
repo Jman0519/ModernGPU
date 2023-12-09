@@ -14,6 +14,7 @@
   "author": "Jared Herron",
   "license": "ISC",
   "dependencies": {
-    "@feng3d/wgsl_reflect": "^0.0.2"
+    "@feng3d/wgsl_reflect": "^0.0.2",
+    "@webgpu/types": "^0.1.40"
   }
 }
