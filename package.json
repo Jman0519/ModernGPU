@@ -1,0 +1,19 @@
+{
+  "name": "moderngpu",
+  "version": "1.0.2",
+  "description": "Modern GPU uses WebGPU underneath, but reorginizes it in a much more understandable and usable way for most developers.",
+  "main": "ModernGPU.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "GPU",
+    "WebGPU",
+    "WGSL"
+  ],
+  "author": "Jared Herron",
+  "license": "ISC",
+  "dependencies": {
+    "@feng3d/wgsl_reflect": "^0.0.2"
+  }
+}
