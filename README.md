@@ -44,7 +44,7 @@ To get data out of the GPU and into the CPU, use the ModernGPU.createOutputBuffe
 
 ```javascript
 let outputBuffer = gpu.createOutputBuffer(new Float32Array(1), 2);
-// start the kernel program ane run it in some loop
+// start the kernel program and run it in some loop
 while(true)
 {
     //kernel.run Game of Life
@@ -169,7 +169,7 @@ An example of optimizing for SIMD and workgoup size:
 ```wgsl
 let index = global_id.x; // All 10 instances do this instruction at once
 let counter = 0; // All 10 instances do this instruction at once
-if(index <= 9) { // All 10 instances check this at the same time, only 5 of them return true
+if(index < 9) { // All 10 instances check this at the same time, only 9 of them return true
     counter++; // Only 9 instances do this
     // Maybe some more expensive thing is done here instead of adding
 }
