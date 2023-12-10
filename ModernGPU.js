@@ -64,22 +64,22 @@ export class ModernGpu {
     }
 
     /**
-     * Creates a UniformBuffer, and copys the given buffer to the gpu. Can be written to later with UniformBuffer.write()
+     * Creates a InputBuffer, and copys the given buffer to the gpu. Can be written to later with InputBuffer.write()
      * @param {TypedArray} buffer 
      * @param {Number} binding 
      * @param {Number} group 
-     * @returns {UniformBuffer}
+     * @returns {InputBuffer}
      */
-    createUniformBuffer(buffer, binding, group = 0) {
-        const uniformBuffer = this.device.createBuffer({
+    createInputBuffer(buffer, binding, group = 0) {
+        const storageBuffer = this.device.createBuffer({
             size: buffer.byteLength,
-            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
             mappedAtCreation: true,
         });
 
-        new buffer.constructor(uniformBuffer.getMappedRange()).set(buffer);
-        uniformBuffer.unmap();
-        return new UniformBuffer(uniformBuffer, buffer, this.device, binding, group);
+        new buffer.constructor(storageBuffer.getMappedRange()).set(buffer);
+        storageBuffer.unmap();
+        return new InputBuffer(storageBuffer, buffer, this.device, binding, group);
     }
 
     /**
@@ -137,13 +137,13 @@ export class ModernGpu {
      * Creates a ComputeKernel with the given GPU buffers and shader code. Can be run with ComputeKernel.run()
      * @param {String} srcCode 
      * @param {StorageBuffer[]} storageBuffers 
-     * @param {UniformBuffer[]} uniformBuffers 
+     * @param {InputBuffer[]} inputBuffers 
      * @param {OutputBuffer[]} outputBuffers 
      * @param {Number[]} numWorkgroups 
      * @param {String} entryPoint 
      * @returns {ComputeKernel}
      */
-    compileComputeShader(srcCode, storageBuffers, uniformBuffers, outputBuffers, numWorkgroups, entryPoint = "main") {
+    compileComputeShader(srcCode, storageBuffers, inputBuffers, outputBuffers, numWorkgroups, entryPoint = "main") {
         // compile the shader code into spir-v or something
         const computeShader = this.device.createShaderModule({
             code: srcCode
@@ -154,25 +154,25 @@ export class ModernGpu {
         for (let i = 0; i < storageBuffers.length; i++) {
             let entry = {
                 binding: storageBuffers[i].binding,
-                visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+                visibility: GPUShaderStage.COMPUTE,
                 buffer: {
-                    type: "storage"
+                    type: "read-only-storage"
                 }
             };
             storageBufferLayoutEntries.push(entry);
         }
 
-        // make a list of the entries for the uniform buffers
-        const uniformBufferLayoutEntries = [];
-        for (let i = 0; i < uniformBuffers.length; i++) {
+        // make a list of the entries for the input buffers
+        const inputBufferLayoutEntries = [];
+        for (let i = 0; i < inputBuffers.length; i++) {
             let entry = {
-                binding: uniformBuffers[i].binding,
-                visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+                binding: inputBuffers[i].binding,
+                visibility: GPUShaderStage.COMPUTE,
                 buffer: {
-                    type: "uniform"
+                    type: "storage"
                 }
             };
-            uniformBufferLayoutEntries.push(entry);
+            inputBufferLayoutEntries.push(entry);
         }
 
         // make a list of the entries for the output buffers
@@ -180,7 +180,7 @@ export class ModernGpu {
         for (let i = 0; i < outputBuffers.length; i++) {
             let entry = {
                 binding: outputBuffers[i].binding,
-                visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
+                visibility: GPUShaderStage.COMPUTE,
                 buffer: {
                     type: "storage"
                 }
@@ -191,7 +191,7 @@ export class ModernGpu {
         const bindGroupLayout = this.device.createBindGroupLayout({
             entries: [
                 ...storageBufferLayoutEntries,
-                ...uniformBufferLayoutEntries,
+                ...inputBufferLayoutEntries,
                 ...outputBufferLayoutEntries
             ]
         });
@@ -208,16 +208,16 @@ export class ModernGpu {
             storageBufferEntries.push(entry);
         }
 
-        // make a list of the entries for the uniform buffers
-        const uniformBufferEntries = [];
-        for (let i = 0; i < uniformBuffers.length; i++) {
+        // make a list of the entries for the input buffers
+        const inputBufferEntries = [];
+        for (let i = 0; i < inputBuffers.length; i++) {
             let entry = {
-                binding: uniformBuffers[i].binding,
+                binding: inputBuffers[i].binding,
                 resource: {
-                    buffer: uniformBuffers[i].buffer
+                    buffer: inputBuffers[i].buffer
                 }
             };
-            uniformBufferEntries.push(entry);
+            inputBufferEntries.push(entry);
         }
 
         // make a list of the entries for the output buffers
@@ -236,7 +236,7 @@ export class ModernGpu {
             layout: bindGroupLayout,
             entries: [
                 ...storageBufferEntries,
-                ...uniformBufferEntries,
+                ...inputBufferEntries,
                 ...outputBufferEntries
             ]
         });
@@ -554,9 +554,9 @@ class StorageBuffer {
     group;
 }
 
-class UniformBuffer {
+class InputBuffer {
     /**
-     * Creates a UniformBuffer, and copys the given buffer to the gpu. Can be written to later with UniformBuffer.write()
+     * Creates a InputBuffer, and copys the given buffer to the gpu. Can be written to later with InputBuffer.write()
      * @param {GPUBuffer} buffer 
      * @param {TypedArray} typedArrayBuffer 
      * @param {GPUDevice} device 

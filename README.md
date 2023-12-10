@@ -10,7 +10,7 @@ ModernGPU is meant to simplify and automate most of the repeated parts of GPU co
 
 Data on the GPU is a buffer of one kind or another. ModernGPU lets you use any typed buffer/array that JS has to offer. However, it is up to you to match the type up in the shader program (int8 vs int 32 vs float). GPU Buffers also need to know their binding number and workgroup number. Binding number is basically what number argument the buffer is in the shader, and workgroup number is basically what number shader it is being used on. If/When you get aclimated to WGSL, these will make sense.
 
-ModernGPU exposes 3 functions/factories for making GPU buffers: createStorageBuffer, createUniformBuffer, and createOutputBuffer.
+ModernGPU exposes 3 functions/factories for making GPU buffers: createStorageBuffer, createInputBuffer, and createOutputBuffer.
 
 To create data that the GPU can use, use the ModernGPU.createStorageBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and move all the data to the GPU for it to use while running programs. These are buffers that stay on the GPU only. You can pass them between shaders and change them and their changes will persist between function calls. Useful for things like starting a simulation with some state, and letting the GPU keep track of the state from there on out.
 
@@ -21,10 +21,10 @@ let colorBuffer = gpu.createStorageBuffer(new Uint32Array(pointCloud.colors.flat
 
 ```
 
-To pass data into the GPU from the CPU, use the ModerGPU.createUniformBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and make a one way (CPU to GPU) stream of data. This kind of buffer is useful for giving data to a shader program (think where is the camera, where is the center of some more complex object). You want to keep these buffers as small as possible. If you can describe an object - say verticies of a box - with a storage buffer, but the only parts the change is its center, only make the center a uniform buffer.
+To pass data into the GPU from the CPU, use the ModerGPU.createInputBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and make a one way (CPU to GPU) stream of data. This kind of buffer is useful for giving data to a shader program (think where is the camera, where is the center of some more complex object). You want to keep these buffers as small as possible. If you can describe an object - say verticies of a box - with a storage buffer, but the only parts the change is its center, only make the center a input buffer.
 
 ```javascript
-let inputBuffer = gpu.createUniformBuffer(
+let inputBuffer = gpu.createInputBuffer(
     new Float32Array(
         [camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]
         ),
@@ -54,12 +54,12 @@ while(true)
 
 To create a shader program, load the program source file into a string (hard code it in JS or load it form a file it does not matter), and use the ModernGPU.compileComputeShader() or ModernGPU.compileRenderShader(). ModernGPU was designed with compute in mind, but it can render as well. However, this will not be documented until it is better supported. Please take a look at the code if you want to use the render shader, it is not that scary.
 
-To make a compute shader, use the ModernGPU.compileComputeShader() and give it your source code string, storageBuffers, uniform (input) buffers, outputBuffers, and number of workgroups. Optionally you can provide it an entry point in the shader function, but it defaults to "main". The number of work groups should be a 3d array describing how many cores you want to run your code. The cores are (abstractly thougth of as being) in a 3d array layout. So if your code inherently has some 1D, 2D, or 3D strucutre, you can take advantage of this. You should also keep in mind that WGSL will also have you specify the workgroup_size in the WGSL source code. These are not seperate cores, but how many SIMD operations one core can do. For example, if you want 100 tasks done, you can specify a number of work groups as (100,1,1) and workgroup_size as (1,1,1) and 100 cores will execute your shader. Or you can specify a number of work groups as (10,1,1) and workgroup_size as (10,1,1) and 10 cores will execute your code, each core doing 10 SIMD instructions. This is useful to know (and optimize for) if you have branches in your shader program. If one core is doing SIMD instructions and hits an if statemnt, it will have to do both branches seperatly, so try to make sure each workgroup takes the same branch of code.
+To make a compute shader, use the ModernGPU.compileComputeShader() and give it your source code string, storageBuffers, input (input) buffers, outputBuffers, and number of workgroups. Optionally you can provide it an entry point in the shader function, but it defaults to "main". The number of work groups should be a 3d array describing how many cores you want to run your code. The cores are (abstractly thougth of as being) in a 3d array layout. So if your code inherently has some 1D, 2D, or 3D strucutre, you can take advantage of this. You should also keep in mind that WGSL will also have you specify the workgroup_size in the WGSL source code. These are not seperate cores, but how many SIMD operations one core can do. For example, if you want 100 tasks done, you can specify a number of work groups as (100,1,1) and workgroup_size as (1,1,1) and 100 cores will execute your shader. Or you can specify a number of work groups as (10,1,1) and workgroup_size as (10,1,1) and 10 cores will execute your code, each core doing 10 SIMD instructions. This is useful to know (and optimize for) if you have branches in your shader program. If one core is doing SIMD instructions and hits an if statemnt, it will have to do both branches seperatly, so try to make sure each workgroup takes the same branch of code.
 
 ```javascript
     let pointBuffer = gpu.createStorageBuffer(new Float32Array(pc.points.flat()), 0);
     let colorBuffer = gpu.createStorageBuffer(new Uint32Array(pc.colors.flat()), 3);
-    let inputBuffer = gpu.createUniformBuffer(new Float32Array([camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]), 1);
+    let inputBuffer = gpu.createInputBuffer(new Float32Array([camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]), 1);
     let outputBuffer = gpu.createOutputBuffer(new Float32Array(canvas.width * canvas.height * 4), 2);
 
     // write the source code
