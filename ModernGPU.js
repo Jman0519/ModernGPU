@@ -9,6 +9,14 @@ export class ModernGpu {
      */
     constructor() { }
 
+    topology = {
+        pointList: "point-list",
+        lineList: "line-list",
+        lineStrip: "line-strip",
+        triangleList: "triangle-list",
+        triangleStrip: "triangle-strip",
+    }
+
     /**
      * The GPU adapter
      * @type {GPUAdapter}
@@ -254,89 +262,118 @@ export class ModernGpu {
     }
 
     /**
-     * Crates a RenderKernel and displays the given StorageBuffer to the given canvas.
-     * @param {GPUCanvasContext} context 
-     * @param {StorageBuffer} buffer 
-     * @param {Number[]} canvasSize 
-     * @returns {RenderKernel}
+     * 
+     * @param {*} context 
+     * @param {*} srcCode 
+     * @param {*} storageBuffers 
+     * @param {*} inputBuffers 
+     * @param {*} outputBuffers 
+     * @param {*} vertexEntryPoint 
+     * @param {*} fragmentEntryPoint 
+     * @param {*} topology 
+     * @returns 
      */
-    compileRenderShader(context, buffer, canvasSize) {
+    compileRenderShader(context, srcCode, storageBuffers, inputBuffers, outputBuffers, vertexEntryPoint = "vr_main", fragmentEntryPoint = "fr_main", topology = "triangle-list") {
         const format = navigator.gpu.getPreferredCanvasFormat();
-
         context.configure({
             device: this.device,
             format: format
         });
 
-        const basicRenderShader = `
-        @group(${buffer.group}) @binding(${buffer.binding}) var<storage, read_write> buffer: array<f32>;
-        const width: u32 = ${canvasSize[0]};
-        const height: u32 = ${canvasSize[1]};
+        // compile the shader code into spir-v or something
+        const renderShader = this.device.createShaderModule({
+            code: srcCode
+        });
 
-            struct VertexOutput {
-                @builtin(position) Position : vec4<f32>,
-                @location(0) fragUV : vec2<f32>,
-            }
-
-            @vertex
-            fn vert_main(@builtin(vertex_index) VertexIndex : u32) -> VertexOutput {
-                const pos = array(
-                    vec2( 1.0,  1.0),
-                    vec2( 1.0, -1.0),
-                    vec2(-1.0, -1.0),
-                    vec2( 1.0,  1.0),
-                    vec2(-1.0, -1.0),
-                    vec2(-1.0,  1.0),
-                );
-            
-                const uv = array(
-                    vec2(1.0, 0.0),
-                    vec2(1.0, 1.0),
-                    vec2(0.0, 1.0),
-                    vec2(1.0, 0.0),
-                    vec2(0.0, 1.0),
-                    vec2(0.0, 0.0),
-                );
-            
-                var output : VertexOutput;
-                output.Position = vec4(pos[VertexIndex], 0.0, 1.0);
-                output.fragUV = uv[VertexIndex];
-                return output;
-            }
-
-            @fragment
-            fn frag_main(@location(0) fragUV : vec2<f32>) -> @location(0) vec4<f32> {
-                let pos = vec2<u32>(u32(fragUV.x * f32(width)), u32(fragUV.y * f32(height)));
-                let index = pos.x + (pos.y * width);
-                let size = arrayLength(&buffer);
-                if (index < 0) {
-                    return vec4<f32>(1.0, 1.0, 0.0, 1.0);
+        // make a list of the entries for the storage buffers
+        const storageBufferLayoutEntries = [];
+        for (let i = 0; i < storageBuffers.length; i++) {
+            let entry = {
+                binding: storageBuffers[i].binding,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: {
+                    type: "read-only-storage"
                 }
-                return vec4<f32>(buffer[(index * 4)]/255.0, buffer[(index * 4) + 1]/255.0, buffer[(index * 4) + 2]/255.0, buffer[(index * 4) + 3]/255.0);
-            }
-        `;
+            };
+            storageBufferLayoutEntries.push(entry);
+        }
+
+        // make a list of the entries for the input buffers
+        const inputBufferLayoutEntries = [];
+        for (let i = 0; i < inputBuffers.length; i++) {
+            let entry = {
+                binding: inputBuffers[i].binding,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: {
+                    type: "storage"
+                }
+            };
+            inputBufferLayoutEntries.push(entry);
+        }
+
+        // make a list of the entries for the output buffers
+        const outputBufferLayoutEntries = [];
+        for (let i = 0; i < outputBuffers.length; i++) {
+            let entry = {
+                binding: outputBuffers[i].binding,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: {
+                    type: "storage"
+                }
+            };
+            outputBufferLayoutEntries.push(entry);
+        }
 
         const bindGroupLayout = this.device.createBindGroupLayout({
             entries: [
-                {
-                    binding: buffer.binding,
-                    visibility: GPUShaderStage.COMPUTE | GPUShaderStage.FRAGMENT,
-                    buffer: {
-                        type: "storage"
-                    }
-                }
+                ...storageBufferLayoutEntries,
+                ...inputBufferLayoutEntries,
+                ...outputBufferLayoutEntries
             ]
         });
+
+        // make a list of the entries for the storage buffers
+        const storageBufferEntries = [];
+        for (let i = 0; i < storageBuffers.length; i++) {
+            let entry = {
+                binding: storageBuffers[i].binding,
+                resource: {
+                    buffer: storageBuffers[i].buffer
+                }
+            };
+            storageBufferEntries.push(entry);
+        }
+
+        // make a list of the entries for the input buffers
+        const inputBufferEntries = [];
+        for (let i = 0; i < inputBuffers.length; i++) {
+            let entry = {
+                binding: inputBuffers[i].binding,
+                resource: {
+                    buffer: inputBuffers[i].buffer
+                }
+            };
+            inputBufferEntries.push(entry);
+        }
+
+        // make a list of the entries for the output buffers
+        const outputBufferEntries = [];
+        for (let i = 0; i < outputBuffers.length; i++) {
+            let entry = {
+                binding: outputBuffers[i].binding,
+                resource: {
+                    buffer: outputBuffers[i].buffer
+                }
+            };
+            outputBufferEntries.push(entry);
+        }
 
         const bindGroup = this.device.createBindGroup({
             layout: bindGroupLayout,
             entries: [
-                {
-                    binding: buffer.binding,
-                    resource: {
-                        buffer: buffer.buffer
-                    }
-                }
+                ...storageBufferEntries,
+                ...inputBufferEntries,
+                ...outputBufferEntries
             ]
         });
 
@@ -346,21 +383,21 @@ export class ModernGpu {
             layout: pipelineLayout,
             vertex: {
                 module: this.device.createShaderModule({
-                    code: basicRenderShader
+                    code: srcCode
                 }),
-                entryPoint: "vert_main"
+                entryPoint: vertexEntryPoint,
             },
             fragment: {
                 module: this.device.createShaderModule({
-                    code: basicRenderShader
+                    code: srcCode
                 }),
-                entryPoint: "frag_main",
+                entryPoint: fragmentEntryPoint,
                 targets: [{
                     format: format
                 }]
             },
             primitive: {
-                topology: "triangle-list"
+                topology: topology
             },
         });
 

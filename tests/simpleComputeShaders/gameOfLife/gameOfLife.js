@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../ModernGPU.js";
+import { ModernGpu } from "../../../ModernGPU.js";
 
 async function main() {
     let lifeSize = 2048;

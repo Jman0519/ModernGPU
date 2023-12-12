@@ -1,7 +1,7 @@
-import { ModernGpu } from "../../ModernGPU.js";
+import { ModernGpu } from "../../../ModernGPU.js";
 
 async function main() {
-    let numberOfBodies = 2048;
+    let numberOfBodies = 256;
     let gravitationConstant = 6.67408e-11;
     let dt = 0.01;
     let canvas = document.createElement("canvas");
@@ -70,7 +70,7 @@ async function main() {
 
     let kernel = gpu.compileComputeShader(src, storageBuffers, inputBuffers, outputBuffers, [Math.ceil(numberOfBodies / 256)], "main");
 
-    for (let i = 0; i < 10000; i++) {
+    for (let i = 0; i < 100000; i++) {
         kernel.run();
 
         let data = await outputBuffers[0].read();
