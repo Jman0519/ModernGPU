@@ -9,20 +9,21 @@ async function main() {
 
     let gpu = await ModernGpu.init();
 
-    let src = await (await fetch("mangoSquare.wgsl")).text();
+    let src = await (await fetch("circle.wgsl")).text();
 
     let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Float32Array([
+    let verticies = [
         -1, -1, // bottom left
         -1, 1, // top left
         1, -1, // bottom right
         1, 1, // top right
-    ]), 0));
+    ]
+    storageBuffers.push(gpu.createStorageBuffer(new Float32Array(verticies), 0));
 
     let inputBuffers = [];
     let outputBuffers = [];
 
-    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers, 4, "vr_main", "fr_main", gpu.topology.triangleStrip);
+    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers, verticies.length / 2, "vr_main", "fr_main", gpu.topology.triangleStrip);
     renderShader.run();
 }
 

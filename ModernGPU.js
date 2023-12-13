@@ -263,17 +263,17 @@ export class ModernGpu {
 
     /**
      * 
-     * @param {*} context 
-     * @param {*} srcCode 
-     * @param {*} storageBuffers 
-     * @param {*} inputBuffers 
-     * @param {*} outputBuffers 
-     * @param {*} vertexEntryPoint 
-     * @param {*} fragmentEntryPoint 
-     * @param {*} topology 
+     * @param {GPUCanvasContext} context 
+     * @param {String} srcCode 
+     * @param {StorageBuffer[]} storageBuffers 
+     * @param {InputBuffer[]} inputBuffers 
+     * @param {OutputBuffer[]} outputBuffers 
+     * @param {String} vertexEntryPoint 
+     * @param {String} fragmentEntryPoint 
+     * @param {ModernGpu.topology} topology 
      * @returns 
      */
-    compileRenderShader(context, srcCode, storageBuffers, inputBuffers, outputBuffers, vertexEntryPoint = "vr_main", fragmentEntryPoint = "fr_main", topology = "triangle-list") {
+    compileRenderShader(context, srcCode, storageBuffers, inputBuffers, outputBuffers, numVertexShaders, vertexEntryPoint = "vr_main", fragmentEntryPoint = "fr_main", topology = "triangle-list") {
         const format = navigator.gpu.getPreferredCanvasFormat();
         context.configure({
             device: this.device,
@@ -401,7 +401,7 @@ export class ModernGpu {
             },
         });
 
-        return new RenderKernel(this.device, pipeline, bindGroup, context);
+        return new RenderKernel(this.device, pipeline, bindGroup, context, numVertexShaders, outputBuffers);
     }
 
     /**
@@ -757,23 +757,29 @@ class RenderKernel {
      * @param {GPUDevice} device 
      * @param {GPURenderPipeline} pipeline 
      * @param {GPUBindGroup} bindGroup 
-     * @param {GPUCanvasContext} context 
+     * @param {GPUCanvasContext} context
+     * @param {Number} numberOfVertexShaders
+     * @param {OutputBuffer[]} outputBuffers
      */
-    constructor(device, pipeline, bindGroup, context) {
+    constructor(device, pipeline, bindGroup, context, numberOfVertexShaders, outputBuffers) {
         this.device = device;
         this.pipeline = pipeline;
         this.bindGroup = bindGroup;
         this.context = context;
+        this.numberOfVertexShaders = numberOfVertexShaders;
+        this.outputBuffers = outputBuffers;
     }
     device;
     pipeline;
     bindGroup;
     context;
+    numberOfVertexShaders;
+    outputBuffers;
 
     /**
      * Displays the StorageBuffer to the canvas.
      */
-    run() {
+    run(copyToOutput = true) {
         const commandEncoder = this.device.createCommandEncoder();
         const passEncoder = commandEncoder.beginRenderPass({
             colorAttachments: [
@@ -787,8 +793,13 @@ class RenderKernel {
         });
         passEncoder.setPipeline(this.pipeline);
         passEncoder.setBindGroup(0, this.bindGroup);
-        passEncoder.draw(6, 1, 0, 0);
+        passEncoder.draw(this.numberOfVertexShaders);
         passEncoder.end();
+        if (copyToOutput) {
+            for (const outputBuffer of this.outputBuffers) {
+                commandEncoder.copyBufferToBuffer(outputBuffer.buffer, 0, outputBuffer.cpuAndGpuBuffer, 0, outputBuffer.size);
+            }
+        }
         const commandBuffer = commandEncoder.finish();
         this.device.queue.submit([commandBuffer]);
     }

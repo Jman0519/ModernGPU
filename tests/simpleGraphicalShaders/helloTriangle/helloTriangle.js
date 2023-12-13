@@ -21,7 +21,7 @@ async function main() {
     let inputBuffers = [];
     let outputBuffers = [];
 
-    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers);
+    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers, 3);
     renderShader.run();
 }
 
