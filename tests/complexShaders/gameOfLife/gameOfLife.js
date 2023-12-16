@@ -3,18 +3,20 @@ import { ModernGpu } from "../../../ModernGPU.js";
 async function main() {
     let lifeSize = 2048;
     let canvas = document.createElement("canvas");
-    let ctx = canvas.getContext("2d");
+    let ctx = canvas.getContext("webgpu");
     document.body.append(canvas);
     canvas.width = lifeSize;
     canvas.height = lifeSize;
-    let imageData = ctx.getImageData(0, 0, lifeSize, lifeSize);
 
     let gpu = await ModernGpu.init();
 
     let src = await (await fetch("gameOfLife.compute.wgsl")).text();
+    let renderSrc = await (await fetch("gameOfLife.render.wgsl")).text();
+
+    let uniformBuffers = [];
+    uniformBuffers.push(gpu.createUniformBuffer(new Uint32Array([lifeSize, lifeSize]), 0));
 
     let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Uint32Array([lifeSize, lifeSize]), 0));
 
     let inputBuffers = [];
     let start = new Uint32Array(lifeSize * lifeSize);
@@ -26,23 +28,14 @@ async function main() {
     let outputBuffers = [];
     outputBuffers.push(gpu.createOutputBuffer(new Uint32Array(lifeSize * lifeSize), 2));
 
-    let kernel = gpu.compileComputeShader(src, [], storageBuffers, inputBuffers, outputBuffers, [lifeSize / 16, lifeSize / 16], "main");
+    let kernel = gpu.compileComputeShader(src, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, [lifeSize / 16, lifeSize / 16], "main");
+    let renderKernel = gpu.compileRenderShader(ctx, renderSrc, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, 4, "vs_main", "fs_main", gpu.topology.triangleStrip);
 
     for (let i = 0; i < 1000; i++) {
-        kernel.run(true);
+        kernel.run(false, [[outputBuffers[0], inputBuffers[0]]]);
+        renderKernel.run(false);
 
-        let data = await outputBuffers[0].read();
-        inputBuffers[0].write(data);
-
-        for (let i = 0; i < data.length; i++) {
-            let alive = data[i];
-            imageData.data[i * 4] = alive * 255;
-            imageData.data[i * 4 + 1] = alive * 255;
-            imageData.data[i * 4 + 2] = alive * 255;
-            imageData.data[i * 4 + 3] = 255;
-        }
-        ctx.putImageData(imageData, 0, 0);
-        // await sleep(0.01);
+        await sleep(0.00001);
         console.log(i);
     }
 }

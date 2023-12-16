@@ -53,6 +53,29 @@ export class ModernGpu {
     }
 
     /**
+     * Creates a UniformBuffer, and copys the given buffer to the gpu.
+     * @param {TypedArray} buffer 
+     * @param {Number} binding 
+     * @param {Number} group 
+     * @returns 
+     */
+    createUniformBuffer(buffer, binding, group = 0) {
+        if (this.device == undefined) {
+            throw new Error("device is undefined");
+        }
+
+        const uniformBuffer = this.device.createBuffer({
+            size: buffer.byteLength,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+            mappedAtCreation: true,
+        });
+
+        new buffer.constructor(uniformBuffer.getMappedRange()).set(buffer);
+        uniformBuffer.unmap();
+        return new UniformBuffer(uniformBuffer, buffer, this.device, binding, group);
+    }
+
+    /**
      * Creates a StorageBuffer, and copys the given buffer to the gpu.
      * @param {TypedArray} buffer 
      * @param {Number} binding 
@@ -151,11 +174,24 @@ export class ModernGpu {
      * @param {String} entryPoint 
      * @returns {ComputeKernel}
      */
-    compileComputeShader(srcCode, storageBuffers, inputBuffers, outputBuffers, numWorkgroups, entryPoint = "main") {
+    compileComputeShader(srcCode, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, numWorkgroups, entryPoint = "main") {
         // compile the shader code into spir-v or something
         const computeShader = this.device.createShaderModule({
             code: srcCode
         });
+
+        // make a list of the entries for the unifrom buffers
+        const uniformBufferLayoutEntries = [];
+        for (let i = 0; i < uniformBuffers.length; i++) {
+            let entry = {
+                binding: uniformBuffers[i].binding,
+                visibility: GPUShaderStage.COMPUTE,
+                buffer: {
+                    type: "uniform"
+                }
+            };
+            uniformBufferLayoutEntries.push(entry);
+        }
 
         // make a list of the entries for the storage buffers
         const storageBufferLayoutEntries = [];
@@ -198,11 +234,24 @@ export class ModernGpu {
 
         const bindGroupLayout = this.device.createBindGroupLayout({
             entries: [
+                ...uniformBufferLayoutEntries,
                 ...storageBufferLayoutEntries,
                 ...inputBufferLayoutEntries,
                 ...outputBufferLayoutEntries
             ]
         });
+
+        // make a list of the entries for the uniform buffers
+        const uniformBufferEntries = [];
+        for (let i = 0; i < uniformBuffers.length; i++) {
+            let entry = {
+                binding: uniformBuffers[i].binding,
+                resource: {
+                    buffer: uniformBuffers[i].buffer
+                }
+            };
+            uniformBufferEntries.push(entry);
+        }
 
         // make a list of the entries for the storage buffers
         const storageBufferEntries = [];
@@ -243,6 +292,7 @@ export class ModernGpu {
         const bindGroup = this.device.createBindGroup({
             layout: bindGroupLayout,
             entries: [
+                ...uniformBufferEntries,
                 ...storageBufferEntries,
                 ...inputBufferEntries,
                 ...outputBufferEntries
@@ -273,7 +323,7 @@ export class ModernGpu {
      * @param {ModernGpu.topology} topology 
      * @returns 
      */
-    compileRenderShader(context, srcCode, storageBuffers, inputBuffers, outputBuffers, numVertexShaders, vertexEntryPoint = "vr_main", fragmentEntryPoint = "fr_main", topology = "triangle-list") {
+    compileRenderShader(context, srcCode, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, numVertexShaders, vertexEntryPoint = "vr_main", fragmentEntryPoint = "fr_main", topology = "triangle-list") {
         const format = navigator.gpu.getPreferredCanvasFormat();
         context.configure({
             device: this.device,
@@ -284,6 +334,19 @@ export class ModernGpu {
         const renderShader = this.device.createShaderModule({
             code: srcCode
         });
+
+        // make a list of the entries for the unifrom buffers
+        const uniformBufferLayoutEntries = [];
+        for (let i = 0; i < uniformBuffers.length; i++) {
+            let entry = {
+                binding: uniformBuffers[i].binding,
+                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                buffer: {
+                    type: "uniform"
+                }
+            };
+            uniformBufferLayoutEntries.push(entry);
+        }
 
         // make a list of the entries for the storage buffers
         const storageBufferLayoutEntries = [];
@@ -303,7 +366,7 @@ export class ModernGpu {
         for (let i = 0; i < inputBuffers.length; i++) {
             let entry = {
                 binding: inputBuffers[i].binding,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                visibility: GPUShaderStage.FRAGMENT,
                 buffer: {
                     type: "storage"
                 }
@@ -316,7 +379,7 @@ export class ModernGpu {
         for (let i = 0; i < outputBuffers.length; i++) {
             let entry = {
                 binding: outputBuffers[i].binding,
-                visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                visibility: GPUShaderStage.FRAGMENT,
                 buffer: {
                     type: "storage"
                 }
@@ -326,11 +389,24 @@ export class ModernGpu {
 
         const bindGroupLayout = this.device.createBindGroupLayout({
             entries: [
+                ...uniformBufferLayoutEntries,
                 ...storageBufferLayoutEntries,
                 ...inputBufferLayoutEntries,
                 ...outputBufferLayoutEntries
             ]
         });
+
+        // make a list of the entries for the uniform buffers
+        const uniformBufferEntries = [];
+        for (let i = 0; i < uniformBuffers.length; i++) {
+            let entry = {
+                binding: uniformBuffers[i].binding,
+                resource: {
+                    buffer: uniformBuffers[i].buffer
+                }
+            };
+            uniformBufferEntries.push(entry);
+        }
 
         // make a list of the entries for the storage buffers
         const storageBufferEntries = [];
@@ -371,6 +447,7 @@ export class ModernGpu {
         const bindGroup = this.device.createBindGroup({
             layout: bindGroupLayout,
             entries: [
+                ...uniformBufferEntries,
                 ...storageBufferEntries,
                 ...inputBufferEntries,
                 ...outputBufferEntries
@@ -584,11 +661,47 @@ class StorageBuffer {
     constructor(buffer, binding, group) {
         this.buffer = buffer;
         this.binding = binding;
+        this.size = buffer.size;
         this.group = group;
     }
     buffer;
+    size;
     binding;
     group;
+}
+
+class UniformBuffer {
+    /**
+     * Creates a UniformBuffer, and copys the given buffer to the gpu. Can be written to later with UniformBuffer.write()
+     * @param {GPUBuffer} buffer 
+     * @param {TypedArray} typedArrayBuffer 
+     * @param {GPUDevice} device 
+     * @param {Number} binding 
+     * @param {Number} group 
+     */
+    constructor(buffer, typedArrayBuffer, device, binding, group) {
+        this.buffer = buffer;
+        this.device = device;
+        this.size = typedArrayBuffer.byteLength;
+        this.binding = binding;
+        this.group = group;
+    }
+    buffer;
+    device;
+    size;
+    binding;
+    group;
+
+    /**
+     * Writes the data to the GPU.
+     * @param {TypedArray} data 
+     */
+    write(data) {
+        if (data.byteLength > this.size) {
+            throw new Error("data is too large for buffer");
+        }
+        this.device.queue.writeBuffer(this.buffer, 0, data);
+    }
 }
 
 class InputBuffer {
@@ -612,6 +725,11 @@ class InputBuffer {
     size;
     binding;
     group;
+
+    /**
+     * Writes the data to the GPU.
+     * @param {TypedArray} data 
+     */
     write(data) {
         if (data.byteLength > this.size) {
             throw new Error("data is too large for buffer");
@@ -727,9 +845,10 @@ class ComputeKernel {
 
     /**
      * Runs the ComputeKernel. Optional flag to copy any OutputBuffers from the GPU to the CPU (set to false for speed).
-     * @param {Boolean} copyToOutput 
+     * @param {Boolean} copyToOutput Optional flag to copy any OutputBuffers from the GPU to the CPU (set to false for speed).
+     * @param {StorageBuffer[][]} copyBufferPairs Optional list of StorageBuffer pairs specifiying a copy src, and copy dest pair.
      */
-    async run(copyToOutput = true) {
+    async run(copyToOutput = true, copyBufferPairs = []) {
         for (const outputBuffer of this.outputBuffers) {
             if (outputBuffer.reading) {
                 await outputBuffer.deferer.promise;
@@ -744,6 +863,11 @@ class ComputeKernel {
         if (copyToOutput) {
             for (const outputBuffer of this.outputBuffers) {
                 commandEncoder.copyBufferToBuffer(outputBuffer.buffer, 0, outputBuffer.cpuAndGpuBuffer, 0, outputBuffer.size);
+            }
+        }
+        if (copyBufferPairs.length > 0) {
+            for (const copyBufferPair of copyBufferPairs) {
+                commandEncoder.copyBufferToBuffer(copyBufferPair[0].buffer, 0, copyBufferPair[1].buffer, 0, copyBufferPair[0].size);
             }
         }
         const commandBuffer = commandEncoder.finish();
