@@ -10,9 +10,9 @@ struct parameters {
     dt: f32,
 }
 
-@binding(0) @group(0) var<storage, read> params: parameters;
-@binding(1) @group(0) var<storage, read> numBodies: u32;
-@binding(2) @group(0) var<storage, read_write> current: array<nbody>;
+@binding(0) @group(0) var<uniform> params: parameters;
+@binding(1) @group(0) var<uniform> numBodies: u32;
+@binding(2) @group(0) var<storage, read> current: array<nbody>;
 @binding(3) @group(0) var<storage, read_write> next: array<nbody>;
 
 fn calcAccelerationOfBodyX(x: u32) -> vec2<f32> {

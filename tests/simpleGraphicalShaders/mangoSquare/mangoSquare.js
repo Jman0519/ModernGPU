@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../../ModernGPU.js";
+import { ModernGpu, ModernGpuBuffer, RenderKernel } from "../../../ModernGPU.js";
 
 async function main() {
     let canvas = document.createElement("canvas");
@@ -7,23 +7,20 @@ async function main() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    let gpu = await ModernGpu.init();
+    await ModernGpu.init();
 
     let src = await (await fetch("mangoSquare.wgsl")).text();
 
-    let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Float32Array([
+    let buffers = [];
+    buffers.push(new ModernGpuBuffer(new Float32Array([
         -1, -1, // bottom left
         -1, 1, // top left
         1, -1, // bottom right
         1, 1, // top right
-    ]), 0));
+    ]), 0, 0, ModernGpuBuffer.visibility.vertex, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage));
 
-    let inputBuffers = [];
-    let outputBuffers = [];
-
-    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers, 4, "vr_main", "fr_main", gpu.topology.triangleStrip);
-    renderShader.run();
+    let renderKernel = new RenderKernel(ctx, src, buffers, "vs_main", "fs_main", RenderKernel.topology.triangleStrip);
+    renderKernel.run(4);
 }
 
 main();

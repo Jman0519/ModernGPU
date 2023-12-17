@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../../ModernGPU.js";
+import { ModernGpu, ModernGpuBuffer, RenderKernel } from "../../../ModernGPU.js";
 
 async function main() {
     let canvas = document.createElement("canvas");
@@ -7,22 +7,19 @@ async function main() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    let gpu = await ModernGpu.init();
+    await ModernGpu.init();
 
     let src = await (await fetch("helloTriangle.wgsl")).text();
 
-    let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Float32Array([
+    let buffers = [];
+    buffers.push(new ModernGpuBuffer(new Float32Array([
         -0.5, -0.5, // bottom left point of triangle
         0.0, 0.8, // top middle point of triangle
         0.5, -0.5 // bottom right point of triangle
-    ]), 0));
+    ]), 0, 0, ModernGpuBuffer.visibility.vertex, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage));
 
-    let inputBuffers = [];
-    let outputBuffers = [];
-
-    let renderShader = gpu.compileRenderShader(ctx, src, storageBuffers, inputBuffers, outputBuffers, 3);
-    renderShader.run();
+    let renderKernel = new RenderKernel(ctx, src, buffers);
+    renderKernel.run(3);
 }
 
 main();

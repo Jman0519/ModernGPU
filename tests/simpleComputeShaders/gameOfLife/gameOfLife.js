@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../../ModernGPU.js";
+import { ModernGpu, ModernGpuBuffer, ComputeKernel } from "../../../ModernGPU.js";
 
 async function main() {
     let lifeSize = 2048;
@@ -9,30 +9,33 @@ async function main() {
     canvas.height = lifeSize;
     let imageData = ctx.getImageData(0, 0, lifeSize, lifeSize);
 
-    let gpu = await ModernGpu.init();
+    await ModernGpu.init();
+    let gpu = new ModernGpu();
 
     let src = await (await fetch("gameOfLife.compute.wgsl")).text();
 
-    let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Uint32Array([lifeSize, lifeSize]), 0));
+    let buffers = [];
+    let sizeBuffer = new ModernGpuBuffer(new Uint32Array([lifeSize, lifeSize]), 0, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.uniform, ModernGpuBuffer.usage.uniform);
+    buffers.push(sizeBuffer);
 
-    let inputBuffers = [];
     let start = new Uint32Array(lifeSize * lifeSize);
     for (let i = 0; i < lifeSize * lifeSize; i++) {
         start[i] = Math.random() > 0.5 ? 1 : 0;
     }
-    inputBuffers.push(gpu.createInputBuffer(start, 1));
+    let currentStateBuffer = new ModernGpuBuffer(start, 1, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copyDst);
+    buffers.push(currentStateBuffer);
 
-    let outputBuffers = [];
-    outputBuffers.push(gpu.createOutputBuffer(new Uint32Array(lifeSize * lifeSize), 2));
+    let nextStateBuffer = new ModernGpuBuffer(new Uint32Array(lifeSize * lifeSize), 2, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copySrc);
+    buffers.push(nextStateBuffer);
 
-    let kernel = gpu.compileComputeShader(src, [], storageBuffers, inputBuffers, outputBuffers, [lifeSize / 16, lifeSize / 16], "main");
+    let bridgeBuffer = new ModernGpuBuffer(new Uint32Array(lifeSize * lifeSize), undefined, undefined, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.mapRead | ModernGpuBuffer.usage.copyDst);
+
+    let kernel = new ComputeKernel(src, buffers, "main");
 
     for (let i = 0; i < 1000; i++) {
-        kernel.run(true);
+        kernel.run([lifeSize / 16, lifeSize / 16], [[nextStateBuffer, currentStateBuffer], [nextStateBuffer, bridgeBuffer]]);
 
-        let data = await outputBuffers[0].read();
-        inputBuffers[0].write(data);
+        let data = await bridgeBuffer.read();
 
         for (let i = 0; i < data.length; i++) {
             let alive = data[i];

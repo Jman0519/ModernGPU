@@ -9,7 +9,7 @@ struct Output {
 }
 
 @vertex
-fn vr_main(@builtin(vertex_index) vertex_index: u32) -> Output {
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> Output {
     var output: Output;
     output.position = vec4(points[vertex_index], 0.0, 1.0);
     output.color = output.position;
@@ -17,7 +17,7 @@ fn vr_main(@builtin(vertex_index) vertex_index: u32) -> Output {
 }
 
 @fragment
-fn fr_main(@builtin(position) position: vec4<f32>, @location(0) color: vec4<f32>) -> @location(0) vec4<f32> {
+fn fs_main(@builtin(position) position: vec4<f32>, @location(0) color: vec4<f32>) -> @location(0) vec4<f32> {
     return ((color + 1.0) * 0.5) - vec4(0.0, 0.0, 1.0, 0.0);
     // return ((color + 1.0) * 0.5);
     // return color; // see how 0,0 is the center, and -1 -1 is the bottom left (like a normal graph)

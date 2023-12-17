@@ -1,5 +1,5 @@
 @binding(0) @group(0) var<uniform> size: vec2<u32>;
-@binding(1) @group(0) var<storage, read_write> current: array<u32>;
+@binding(1) @group(0) var<storage, read> current: array<u32>;
 @binding(2) @group(0) var<storage, read_write> next: array<u32>;
 
 override blockSize = 16;

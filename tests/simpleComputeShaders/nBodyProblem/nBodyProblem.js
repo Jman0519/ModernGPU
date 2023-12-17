@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../../ModernGPU.js";
+import { ModernGpu, ModernGpuBuffer, ComputeKernel } from "../../../ModernGPU.js";
 
 async function main() {
     let numberOfBodies = 256;
@@ -10,18 +10,17 @@ async function main() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    let gpu = await ModernGpu.init();
+    await ModernGpu.init();
 
     let src = await (await fetch("nBodyProblem.compute.wgsl")).text();
 
-    let storageBuffers = [];
-    storageBuffers.push(gpu.createStorageBuffer(new Float32Array([gravitationConstant, dt]), 0));
-    storageBuffers.push(gpu.createStorageBuffer(new Uint32Array([numberOfBodies]), 1));
+    let buffers = [];
+    let constantsBuffer = new ModernGpuBuffer(new Float32Array([gravitationConstant, dt]), 0, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.uniform, ModernGpuBuffer.usage.uniform);
+    let numBodiesBuffer = new ModernGpuBuffer(new Uint32Array([numberOfBodies]), 1, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.uniform, ModernGpuBuffer.usage.uniform);
+    buffers.push(constantsBuffer);
+    buffers.push(numBodiesBuffer);
 
-    let inputBuffers = [];
     let start = new Float32Array(numberOfBodies * 6);
-    let momentumX = 0;
-    let momentumY = 0;
     let avgSpeed = 50;
     for (let i = 0; i < numberOfBodies; i++) {
         start[i * 6] = Math.random() * canvas.width; // x
@@ -62,19 +61,20 @@ async function main() {
     start[22] = mass;
     start[23] = Math.sqrt(start[22]) / 1000; // radius
 
+    let currentBodiesBuffer = new ModernGpuBuffer(start, 2, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copyDst);
+    buffers.push(currentBodiesBuffer);
 
-    inputBuffers.push(gpu.createInputBuffer(start, 2));
+    let nextBodiesBuffer = new ModernGpuBuffer(new Float32Array(numberOfBodies * 6), 3, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copySrc);
+    buffers.push(nextBodiesBuffer);
 
-    let outputBuffers = [];
-    outputBuffers.push(gpu.createOutputBuffer(new Float32Array(numberOfBodies * 6), 3));
+    let bridgeBuffer = new ModernGpuBuffer(new Float32Array(numberOfBodies * 6), undefined, undefined, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.mapRead | ModernGpuBuffer.usage.copyDst);
 
-    let kernel = gpu.compileComputeShader(src, storageBuffers, inputBuffers, outputBuffers, [Math.ceil(numberOfBodies / 256)], "main");
+    let kernel = new ComputeKernel(src, buffers, "main");
 
     for (let i = 0; i < 100000; i++) {
-        kernel.run();
+        kernel.run([numBodiesBuffer], [[nextBodiesBuffer, currentBodiesBuffer], [nextBodiesBuffer, bridgeBuffer]]);
 
-        let data = await outputBuffers[0].read();
-        inputBuffers[0].write(data);
+        let data = await bridgeBuffer.read();
 
         ctx.rect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "black";

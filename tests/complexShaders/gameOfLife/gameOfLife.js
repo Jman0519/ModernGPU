@@ -1,4 +1,4 @@
-import { ModernGpu } from "../../../ModernGPU.js";
+import { ModernGpu, ModernGpuBuffer, ComputeKernel, RenderKernel } from "../../../ModernGPU.js";
 
 async function main() {
     let lifeSize = 2048;
@@ -8,32 +8,32 @@ async function main() {
     canvas.width = lifeSize;
     canvas.height = lifeSize;
 
-    let gpu = await ModernGpu.init();
+    await ModernGpu.init();
+    let gpu = new ModernGpu();
 
     let src = await (await fetch("gameOfLife.compute.wgsl")).text();
     let renderSrc = await (await fetch("gameOfLife.render.wgsl")).text();
 
-    let uniformBuffers = [];
-    uniformBuffers.push(gpu.createUniformBuffer(new Uint32Array([lifeSize, lifeSize]), 0));
+    let buffers = [];
+    let sizeBuffer = new ModernGpuBuffer(new Uint32Array([lifeSize, lifeSize]), 0, 0, ModernGpuBuffer.visibility.compute | ModernGpuBuffer.visibility.fragment, ModernGpuBuffer.bufferType.uniform, ModernGpuBuffer.usage.uniform);
+    buffers.push(sizeBuffer);
 
-    let storageBuffers = [];
-
-    let inputBuffers = [];
     let start = new Uint32Array(lifeSize * lifeSize);
     for (let i = 0; i < lifeSize * lifeSize; i++) {
         start[i] = Math.random() > 0.5 ? 1 : 0;
     }
-    inputBuffers.push(gpu.createInputBuffer(start, 1));
+    let currentStateBuffer = new ModernGpuBuffer(start, 1, 0, ModernGpuBuffer.visibility.compute | ModernGpuBuffer.visibility.fragment, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copyDst);
+    buffers.push(currentStateBuffer);
 
-    let outputBuffers = [];
-    outputBuffers.push(gpu.createOutputBuffer(new Uint32Array(lifeSize * lifeSize), 2));
+    let nextStateBuffer = new ModernGpuBuffer(new Uint32Array(lifeSize * lifeSize), 2, 0, ModernGpuBuffer.visibility.compute | ModernGpuBuffer.visibility.fragment, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copySrc);
+    buffers.push(nextStateBuffer);
 
-    let kernel = gpu.compileComputeShader(src, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, [lifeSize / 16, lifeSize / 16], "main");
-    let renderKernel = gpu.compileRenderShader(ctx, renderSrc, uniformBuffers, storageBuffers, inputBuffers, outputBuffers, 4, "vs_main", "fs_main", gpu.topology.triangleStrip);
+    let kernel = new ComputeKernel(src, buffers, "main");
+    let renderKernel = new RenderKernel(ctx, renderSrc, buffers, "vs_main", "fs_main", RenderKernel.topology.triangleStrip);
 
     for (let i = 0; i < 1000; i++) {
-        kernel.run(false, [[outputBuffers[0], inputBuffers[0]]]);
-        renderKernel.run(false);
+        kernel.run([lifeSize / 16, lifeSize / 16], [[nextStateBuffer, currentStateBuffer]]);
+        renderKernel.run(4);
 
         await sleep(0.00001);
         console.log(i);
