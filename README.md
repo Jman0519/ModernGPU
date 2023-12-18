@@ -2,168 +2,56 @@
 
 Modern GPU uses WebGPU underneath, but reorginized it in a much more understandable and usable way for most developers.
 
-Right now WebGPU is only implemented on most browsers, and this package currently only targets browsers. However, progress and efforts are being made to be able to interface with WebGPU's C++ library (DAWN) in Node. The next version of this package will include Node support as well.
+Right now WebGPU is only implemented on browsers, and this package currently only targets browsers. However, progress and efforts are being made to be able to interface with WebGPU's C++ library (DAWN) in Node. The next version of this package will include Node support as well when Node gains WebGPU support.
 
 ## Usage
 
 ModernGPU is meant to simplify and automate most of the repeated parts of GPU configurations. This means you only have to worry about what data you are giving the GPU and programming your shader.
 
-Data on the GPU is a buffer of one kind or another. ModernGPU lets you use any typed buffer/array that JS has to offer. However, it is up to you to match the type up in the shader program (int8 vs int 32 vs float). GPU Buffers also need to know their binding number and workgroup number. Binding number is basically what number argument the buffer is in the shader, and workgroup number is basically what number shader it is being used on. If/When you get aclimated to WGSL, these will make sense.
+Data on the GPU is a buffer of one kind or another. ModernGPU lets you use any typed array that JS has to offer. However, it is up to you to match the type up in the shader program (int8 vs int 32 vs float32 etc.). GPU Buffers also need to know their binding number and group number. Binding number is basically what number argument the buffer is in the shader, and group number is basically what number shader it is being used on. When you get acclimated to WGSL, these will make sense.
 
-ModernGPU exposes 3 functions/factories for making GPU buffers: createStorageBuffer, createInputBuffer, and createOutputBuffer.
+ModernGPU exposes 4 main classes to control the GPU: ModernGpu, ModernGpuBuffer, ComputeKernel, and RenderKernel.
 
-To create data that the GPU can use, use the ModernGPU.createStorageBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and move all the data to the GPU for it to use while running programs. These are buffers that stay on the GPU only. You can pass them between shaders and change them and their changes will persist between function calls. Useful for things like starting a simulation with some state, and letting the GPU keep track of the state from there on out.
-
-```javascript
-let pointBuffer = gpu.createStorageBuffer(new Float32Array(pointCloud.points.flat()), 0);
-let colorBuffer = gpu.createStorageBuffer(new Uint32Array(pointCloud.colors.flat()), 3);
-// cannot do much with them after they are written to
-
-```
-
-To pass data into the GPU from the CPU, use the ModerGPU.createInputBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and make a one way (CPU to GPU) stream of data. This kind of buffer is useful for giving data to a shader program (think where is the camera, where is the center of some more complex object). You want to keep these buffers as small as possible. If you can describe an object - say verticies of a box - with a storage buffer, but the only parts the change is its center, only make the center a input buffer.
+To create data that the GPU can use, make a ModernGpuBuffer. This class takes the typed array that it will initilize with data, the binding and group number, what shader stages it will be used in, the buffer type, and the buffer usage. After creation, these buffers get coppied (often called mapped) to the GPU and changing them will only change what the CPU sees. You can however, pass the bufferes between different kernels. Useful for things like running a simulation in a compute kernel, and rendering that state to the screen in a render kernel.
 
 ```javascript
-let inputBuffer = gpu.createInputBuffer(
-    new Float32Array(
-        [camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]
-        ),
-    1);
-//start the kernel program and run it in some loop
-while(true)
-{
-    inputBuffer.write(new Float32Array(
-        [camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]
-    ))
-    //kernel.run Some 3d Camera viewer
+let start = new Uint32Array(lifeSize * lifeSize);
+for (let i = 0; i < lifeSize * lifeSize; i++) {
+    start[i] = Math.random() > 0.5 ? 1 : 0;
 }
-
+// a buffer with binding 1, group 0, visible to compute and fragment shaders, read only, and used as storage and a copy destination (for writing to inbetween kernel runs).
+let currentStateBuffer = new ModernGpuBuffer(start, 1, 0, ModernGpuBuffer.visibility.compute | ModernGpuBuffer.visibility.fragment, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copyDst);
+```
+```wgsl
+@binding(1) @group(0) var<storage, read> current: array<u32>;
 ```
 
-To get data out of the GPU and into the CPU, use the ModernGPU.createOutputBuffer() method. This method will take a buffer of data (and binding number and workgroup number), and make a oneway (GPU to CPU) stream of data. This kind of buffer is useful for getting the results of a shader program. Again, you want to keep these buffers as small as possible.
+To pass data into the GPU from the CPU, make sure to give the usage parameter the ModernGpuBuffer.usage.copyDst value. This tells the gpu that the buffer must be stored somewhere that the CPU can send data to, and overwrite it if need be.
+
+To get data into the CPU from the GPU, make sure to give the usage parameter the ModernGpuBuffer.usage.copySrc value (it is almost always accompanied by mapRead). This tells the GPU that the buffer must be kept in a place that the CPU can read the data in. WebGPU actually forbids any other usage with these two usages states, so it is common to make a bridge buffer that bridges GPU to CPU. The following is an example of a bridge buffer being used to read values from the GPU to the CPU.
 
 ```javascript
-let outputBuffer = gpu.createOutputBuffer(new Float32Array(1), 2);
-// start the kernel program and run it in some loop
-while(true)
-{
-    //kernel.run Game of Life
-    let numberCellsAlive = await outputBuffer.read();
-}
+let currentBodiesBuffer = new ModernGpuBuffer(start, 2, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.read_only_storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copyDst);
+buffers.push(currentBodiesBuffer);
+
+let nextBodiesBuffer = new ModernGpuBuffer(new Float32Array(numberOfBodies * 6), 3, 0, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.storage | ModernGpuBuffer.usage.copySrc);
+buffers.push(nextBodiesBuffer);
+
+let bridgeBuffer = new ModernGpuBuffer(new Float32Array(numberOfBodies * 6), undefined, undefined, ModernGpuBuffer.visibility.compute, ModernGpuBuffer.bufferType.storage, ModernGpuBuffer.usage.mapRead | ModernGpuBuffer.usage.copyDst);
+
+let kernel = new ComputeKernel(src, buffers, "main");
+kernel.run([numberOfBodies], [[nextBodiesBuffer, currentBodiesBuffer], [nextBodiesBuffer, bridgeBuffer]]);
+
+let data = await bridgeBuffer.read();
 ```
 
-To create a shader program, load the program source file into a string (hard code it in JS or load it form a file it does not matter), and use the ModernGPU.compileComputeShader() or ModernGPU.compileRenderShader(). ModernGPU was designed with compute in mind, but it can render as well. However, this will not be documented until it is better supported. Please take a look at the code if you want to use the render shader, it is not that scary.
+Notice how the output (nexBodiesBuffer) has to be copied to the bridge buffer. Once the kernel has run and the data copied, we can use the ModernGpu.read() method to get the data out of the bridge buffer.
 
-To make a compute shader, use the ModernGPU.compileComputeShader() and give it your source code string, storageBuffers, input (input) buffers, outputBuffers, and number of workgroups. Optionally you can provide it an entry point in the shader function, but it defaults to "main". The number of work groups should be a 3d array describing how many cores you want to run your code. The cores are (abstractly thougth of as being) in a 3d array layout. So if your code inherently has some 1D, 2D, or 3D strucutre, you can take advantage of this. You should also keep in mind that WGSL will also have you specify the workgroup_size in the WGSL source code. These are not seperate cores, but how many SIMD operations one core can do. For example, if you want 100 tasks done, you can specify a number of work groups as (100,1,1) and workgroup_size as (1,1,1) and 100 cores will execute your shader. Or you can specify a number of work groups as (10,1,1) and workgroup_size as (10,1,1) and 10 cores will execute your code, each core doing 10 SIMD instructions. This is useful to know (and optimize for) if you have branches in your shader program. If one core is doing SIMD instructions and hits an if statemnt, it will have to do both branches seperatly, so try to make sure each workgroup takes the same branch of code.
+To create a shader program, load the program source file into a string (hard code it in JS or load it form a file it does not matter), and use the ComputeKernel or RenderKernel constructors. ModernGPU was designed with compute in mind, but it can render as well. However, this will not be well documented until it is better supported. Please take a look at the code if you want to use the render shader (it is not that scary I promise).
 
-```javascript
-    let pointBuffer = gpu.createStorageBuffer(new Float32Array(pc.points.flat()), 0);
-    let colorBuffer = gpu.createStorageBuffer(new Uint32Array(pc.colors.flat()), 3);
-    let inputBuffer = gpu.createInputBuffer(new Float32Array([camera.x, camera.y, camera.z, ...camera.GetRotationMatrix().data.flat(), camera.pointRadius, camera.fc, camera.fov, pc.points.length, canvas.width, canvas.height]), 1);
-    let outputBuffer = gpu.createOutputBuffer(new Float32Array(canvas.width * canvas.height * 4), 2);
+To make a compute shader, use the ComputeKernel and give it your source code string, buffers, and name of the entry point function (default is main). You can then run the kernel with the ComputeKernel.run() method which takes the number of workgroups and an array of ModernGpuBuffer pairs. The first argument is the number of work groups. The 3 values are the size of a 3d array describing how many cores you want to run your code. The cores are (abstractly thougth of as being) in a 3d array layout. So if your code inherently has some 1D, 2D, or 3D strucutre, you can take advantage of this. You should also keep in mind that WGSL will also have you specify the workgroup_size in the WGSL source code. These are not seperate cores, but how many SIMD operations one core can do. For example, if you want 100 tasks done, you can specify a number of work groups as (100,1,1) and workgroup_size as (1,1,1) and 100 cores will execute your shader. Or you can specify a number of work groups as (10,1,1) and workgroup_size as (10,1,1) and 10 cores will execute your code, each core doing 10 SIMD instructions. This is useful to know (and optimize for) if you have branches in your shader program. If one core is doing SIMD instructions and hits an if statemnt, it will have to do both branches seperatly, so try to make sure each workgroup takes the same branch of code. The second argument is the array of ModernGpuBuffer pairs. Each pair describes a copySrc, and copyDst buffer. Every copyDst buffer will have the data from the copySrc buffer copied into it at the end of the shader execution.
 
-    // write the source code
-    const numWorkgroups = [Math.ceil((pc.points.length) / 256), 1, 1];
-    const srcCode = `
-    struct inputs {
-        x: f32,
-        y: f32,
-        z: f32,
-        rot00: f32,
-        rot01: f32,
-        rot02: f32,
-        rot10: f32,
-        rot11: f32,
-        rot12: f32,
-        rot20: f32,
-        rot21: f32,
-        rot22: f32,
-        pointRadius: f32,
-        fc: f32,
-        fov: f32,
-        numPoints: f32,
-        width: f32,
-        height: f32
-    }
-        @group(0) @binding(0) var<storage, read_write> xin: array<f32>;
-        @group(0) @binding(3) var<storage, read_write> color: array<u32>;
-        @group(0) @binding(1) var<uniform> input: inputs;
-        @group(0) @binding(2) var<storage, read_write> xout: array<f32>;
-        @compute @workgroup_size(256, 1, 1)
-        fn main(
-            @builtin(global_invocation_id)
-            global_id: vec3u
-        ){
-            let index = global_id.x;
-            if (f32(index) >= input.numPoints) {
-                return;
-            }
-            let x = xin[index * 3];
-            let y = xin[index * 3 + 1];
-            let z = xin[index * 3 + 2];
-            let rot = mat3x3<f32>(
-                input.rot00, input.rot10, input.rot20,
-                input.rot01, input.rot11, input.rot21,
-                input.rot02, input.rot12, input.rot22,
-            );
-            let translated = vec3<f32>(x - input.x, y - input.y, z - input.z);
-            let rotated = rot * translated;
-            let scaleFactor = input.fc / rotated.x;
-
-            if(rotated.x < 0) {
-                return;
-            }
-
-            let screenPos = vec3<f32>(
-            (-rotated.y * scaleFactor) + (input.width / 2),
-            (-rotated.z * scaleFactor) + (input.height / 2),
-            input.fc);
-
-            if(screenPos.x > input.width || screenPos.x < 0 || screenPos.y > input.height || screenPos.y < 0) {
-                return;
-            }
-            let pix = u32(floor(screenPos.x)) + u32(floor(screenPos.y)) * u32(input.width);
-            var depth = rotated.x;
-
-            if (pix >= u32(input.width * input.height) || pix < 0) {
-                return;
-            }
-
-            // xout[pix * 4] = depth;
-            // xout[pix * 4 + 1] = depth;
-            // xout[pix * 4 + 2] = depth;
-            // xout[pix * 4 + 3] = f32(255);
-
-            xout[pix * 4] = f32(color[index*3]);
-            xout[pix * 4 + 1] = f32(color[index*3+1]);
-            xout[pix * 4 + 2] = f32(color[index*3+2]);
-            xout[pix * 4 + 3] = f32(255);
-        }
-        `
-    const clearBackgroundCode = `
-        @group(0) @binding(2) var<storage, read_write> xout: array<f32>;
-        @compute @workgroup_size(256, 1, 1)
-        fn main(
-            @builtin(global_invocation_id)
-            global_id: vec3u
-        ){
-            let index = global_id.x;
-            xout[index * 4] = f32(18);
-            xout[index * 4 + 1] = f32(18);
-            xout[index * 4 + 2] = f32(18);
-            xout[index * 4 + 3] = f32(255);
-        }
-    `
-
-    let kernel = gpu.compileComputeShader(srcCode, [pointBuffer, colorBuffer], [inputBuffer], [outputBuffer], numWorkgroups);
-    let backgroundKernel = gpu.compileComputeShader(clearBackgroundCode, [], [], [outputBuffer], [Math.ceil((canvas.width * canvas.height) / 256), 1, 1]);
-    let renderKernel = gpu.compileRenderShader(ctx, outputBuffer, [canvas.width, canvas.height]);
-
-    backgroundKernel.run();
-    kernel.run();
-    renderKernel.run();
-    const result = await outputBuffer.read(); // note that this output buffer does not need to be an output buffer exepct for this read. It could be a storageBuffer.
-```
+For good examples on how to get started with ModernGPU (or WebGPU in general) please see the ModernGPU/examples directory for a through list of examples using compute, render, both, and straight WebGPU with no library. The examples are common usecases and laid out in an learnable/teachable manner. https://github.com/Jman0519/ModernGPU/tree/master/tests
 
 An example of optimizing for SIMD and workgoup size:
 ```wgsl

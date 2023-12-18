@@ -72,7 +72,7 @@ async function main() {
     let kernel = new ComputeKernel(src, buffers, "main");
 
     for (let i = 0; i < 100000; i++) {
-        kernel.run([numBodiesBuffer], [[nextBodiesBuffer, currentBodiesBuffer], [nextBodiesBuffer, bridgeBuffer]]);
+        kernel.run([numberOfBodies], [[nextBodiesBuffer, currentBodiesBuffer], [nextBodiesBuffer, bridgeBuffer]]);
 
         let data = await bridgeBuffer.read();
 
