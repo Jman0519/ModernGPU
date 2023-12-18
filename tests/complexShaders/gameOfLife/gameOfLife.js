@@ -31,7 +31,7 @@ async function main() {
     let kernel = new ComputeKernel(src, buffers, "main");
     let renderKernel = new RenderKernel(ctx, renderSrc, buffers, "vs_main", "fs_main", RenderKernel.topology.triangleStrip);
 
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 100000; i++) {
         kernel.run([lifeSize / 16, lifeSize / 16], [[nextStateBuffer, currentStateBuffer]]);
         renderKernel.run(4);
 
