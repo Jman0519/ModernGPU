@@ -1,6 +1,6 @@
 {
   "name": "moderngpu",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Modern GPU uses WebGPU underneath, but reorginizes it in a much more understandable and usable way for most developers.",
   "main": "ModernGPU.js",
   "scripts": {
